@@ -8,10 +8,10 @@ import (
 )
 
 type Block struct {
-	Timestamp     int64
-	Data          []byte
-	PrevBlockHash []byte
-	Hash          []byte
+	Timestamp     int64  `json:"timestamp"`
+	Data          []byte `json:"data"`
+	PrevBlockHash []byte `json:"previous_block"`
+	Hash          []byte `json:"hash"`
 }
 
 func (b *Block) SetHash() {
