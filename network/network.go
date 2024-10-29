@@ -97,7 +97,7 @@ func InitializeNetwork() {
 		log.Fatalf("failed to initialize nat: %+v", err)
 	}
 
-	port := fmt.Sprintf(":%d", nat.InternalPort)
+	port := fmt.Sprintf(":%d", 8081)
 
 	h := network{
 		node: node.InitNode(port),
