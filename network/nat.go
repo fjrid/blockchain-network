@@ -2,54 +2,37 @@ package network
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"log"
-	"net"
-	"os"
-	"strconv"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
+	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
-	p2pNetwork "github.com/libp2p/go-libp2p/core/network"
+	dnetwork "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/protocol"
-	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
+	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
+	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	"github.com/multiformats/go-multiaddr"
 )
 
 type NAT struct {
-	InternalIP   net.IP
-	InternalPort int
-	ProtocolID   string
+	ProtocolID     string
+	Port           int
+	PeersBootstrap string
+	Host           host.Host
 
-	Host host.Host
+	isBootstrapMode bool
 }
 
-type discoveryNotifee struct {
-	PeerChan chan peer.AddrInfo
-}
+func (n *NAT) setupHost() error {
+	log.Println("setting up host, and listening network interface")
 
-func (dn *discoveryNotifee) HandlePeerFound(p peer.AddrInfo) {
-	dn.PeerChan <- p
-}
-
-func (n *NAT) handleNewStream(stream p2pNetwork.Stream) {
-	log.Println("New incoming stream")
-}
-
-func (n *NAT) registerMDNS(h *host.Host) (*discoveryNotifee, error) {
-	notifee := &discoveryNotifee{PeerChan: make(chan peer.AddrInfo)}
-	mdnsService := mdns.NewMdnsService(*h, "libp2p-discover", notifee)
-
-	if err := mdnsService.Start(); err != nil {
-		return nil, err
-	}
-
-	return notifee, nil
-}
-
-func (n *NAT) discoverNetwork() error {
-	sourceMultiAddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", n.InternalIP, n.InternalPort))
+	sourceMultiAddr, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/tcp/0")
 	if err != nil {
 		return fmt.Errorf("failed to generate multi address: %+v", err)
 	}
@@ -59,47 +42,149 @@ func (n *NAT) discoverNetwork() error {
 		return fmt.Errorf("failed to create p2p client: %+v", err)
 	}
 
-	h.SetStreamHandler(protocol.ID(n.ProtocolID), n.handleNewStream)
-
-	log.Printf("Node ID: %s", h.ID().ShortString())
-	log.Printf("Listening On: %s", h.Addrs())
-
-	mdnsService, err := n.registerMDNS(&h)
-	if err != nil {
-		return fmt.Errorf("failed to start mdns: %+v", err)
-	}
-
-	// Discover Peer
-	go func(dn *discoveryNotifee, h host.Host) {
-		for peerInfo := range dn.PeerChan {
-			err := h.Connect(context.Background(), peerInfo)
-			if err != nil {
-				log.Printf("failed to connect peer %s: %+v", peerInfo.Addrs, err)
-			} else {
-				log.Println("Successfully to connect peer")
-			}
-		}
-	}(mdnsService, h)
+	log.Printf("Node ID: %v", h.ID().String())
+	log.Printf("Listening Network Interface: %s", h.Addrs())
 
 	n.Host = h
+
 	return nil
 }
 
-func initializeNAT() (*NAT, error) {
-	internalPort, err := strconv.Atoi(os.Args[1])
+func (n *NAT) initDHT(ctx context.Context) (*dht.IpfsDHT, error) {
+	if len(n.Host.Addrs()) == 0 {
+		return nil, errors.New("trying to initialize distributed hash table, but Host is not setted up")
+	}
+
+	log.Println("Initialize distributed hash table")
+
+	var (
+		options        = make([]dht.Option, 0)
+		bootstrapPeers = n.parsePeerBootstrap()
+	)
+
+	if len(bootstrapPeers) == 0 {
+		log.Println("Node running under server mode")
+
+		n.isBootstrapMode = true
+		options = append(options, dht.Mode(dht.ModeServer))
+	}
+
+	kademliaDHT, err := dht.New(ctx, n.Host, options...)
 	if err != nil {
 		return nil, err
 	}
-
-	internalIP := os.Args[2]
-
-	nat := &NAT{
-		InternalPort: internalPort,
-		InternalIP:   net.ParseIP(internalIP),
-		ProtocolID:   "/discovery/1.0.0",
+	if err = kademliaDHT.Bootstrap(ctx); err != nil {
+		return nil, err
 	}
 
-	if err := nat.discoverNetwork(); err != nil {
+	wg := sync.WaitGroup{}
+	for _, peerAddr := range bootstrapPeers {
+		log.Printf("Connecting to bootstrap peer (%s)", peerAddr.String())
+
+		addr, err := peer.AddrInfoFromP2pAddr(peerAddr)
+		if err != nil {
+			log.Fatalf("failed to get bootstrap address info from P2P (%s): %+v", peerAddr.String(), err)
+		}
+
+		wg.Add(1)
+		go func(addr *peer.AddrInfo) {
+			defer wg.Done()
+			if err := n.Host.Connect(context.Background(), *addr); err != nil {
+				log.Fatalf("failed to connect to boostrap peer (%s): %+v", addr.String(), err)
+			} else {
+				log.Printf("Successfully connect to bootstrap peer (%s)", addr.String())
+			}
+		}(addr)
+	}
+	wg.Wait()
+
+	log.Println("Finished to initialize distributed hash table")
+
+	return kademliaDHT, nil
+}
+
+func (n *NAT) discoverNetwork(ctx context.Context) error {
+	if len(n.Host.Addrs()) == 0 {
+		return errors.New("trying to discovering network, but Host is not setted up")
+	}
+
+	log.Println("Discovering peer on network")
+
+	dht, err := n.initDHT(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize DHT: %+v", err)
+	}
+
+	routeDiscover := routing.NewRoutingDiscovery(dht)
+	dutil.Advertise(ctx, routeDiscover, n.ProtocolID)
+
+	isConnected := false
+	for !isConnected && !n.isBootstrapMode {
+		log.Println("Searching for peers...")
+		peerChan, err := routeDiscover.FindPeers(ctx, n.ProtocolID)
+		if err != nil {
+			log.Fatalf("failed to search peer on network: %+v", err)
+		}
+
+		for peer := range peerChan {
+			if peer.ID == n.Host.ID() {
+				continue
+			}
+
+			if n.Host.Network().Connectedness(peer.ID) == dnetwork.Connected {
+				isConnected = true
+				continue
+			}
+
+			if err := n.Host.Connect(ctx, peer); err != nil {
+				log.Printf("failed connect to peer (%s): %+v", peer.ID, err)
+			} else {
+				log.Printf("successfullt connect to peer %s", peer.ID)
+				isConnected = true
+			}
+		}
+
+		time.Sleep(time.Second)
+	}
+
+	log.Println("Peer discovery complete")
+
+	return nil
+}
+
+func (n *NAT) parsePeerBootstrap() []multiaddr.Multiaddr {
+	multiAddrs := make([]multiaddr.Multiaddr, 0)
+
+	for _, addr := range strings.Split(n.PeersBootstrap, ",") {
+		if strings.TrimSpace(addr) == "" {
+			continue
+		}
+
+		multiAddr, err := multiaddr.NewMultiaddr(addr)
+		if err != nil {
+			log.Fatalf("failed to parse bootstrap peer address (%s): %+v", addr, err)
+		}
+
+		multiAddrs = append(multiAddrs, multiAddr)
+	}
+
+	return multiAddrs
+}
+
+func initializeNAT(ctx context.Context) (*NAT, error) {
+	nat := &NAT{
+		ProtocolID: "/discovery/1.0.0",
+	}
+
+	flag.IntVar(&nat.Port, "port", 0, "Used to defining port")
+	flag.StringVar(&nat.PeersBootstrap, "bootstrap-peer", "", "Used to define bootstrap peer")
+	flag.Parse()
+
+	if err := nat.setupHost(); err != nil {
+		log.Fatalf("failed to setup host: %+v", err)
+	}
+
+	if err := nat.discoverNetwork(ctx); err != nil {
 		return nil, err
 	}
 

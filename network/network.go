@@ -92,13 +92,12 @@ func (n *network) initializeGossip() error {
 }
 
 func InitializeNetwork() {
-	nat, err := initializeNAT()
+	nat, err := initializeNAT(context.Background())
 	if err != nil {
 		log.Fatalf("failed to initialize nat: %+v", err)
 	}
 
-	port := fmt.Sprintf(":%d", 8081)
-
+	port := fmt.Sprintf(":%d", nat.Port)
 	h := network{
 		node: node.InitNode(port),
 		nat:  nat,
