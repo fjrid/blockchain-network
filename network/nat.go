@@ -64,7 +64,7 @@ func (n *NAT) initDHT(ctx context.Context) (*dht.IpfsDHT, error) {
 		log.Println("Node running under server mode")
 		options = append(options, dht.Mode(dht.ModeServer))
 	} else {
-		defaultBootstrap, err := multiaddr.NewMultiaddr("/ip4/128.199.135.207/tcp/33053/p2p/12D3KooWCYzxFE3TKaqkwPPv4FHmcMyTsH6Cv7Jkei3P8NF7otMX")
+		defaultBootstrap, err := multiaddr.NewMultiaddr("/ip4/128.199.135.207/tcp/37545/p2p/12D3KooWBxeptFzwATdqNkPi3VZqRF5fDSNmcSAsBKuAAJxdNnSB")
 		if err != nil {
 			return nil, fmt.Errorf("failed to define default bootstrap peer: %+v", err)
 		}
@@ -139,9 +139,7 @@ func (n *NAT) discoverNetwork(ctx context.Context) error {
 				continue
 			}
 
-			if err := n.Host.Connect(ctx, peer); err != nil {
-				log.Printf("failed connect to peer (%s): %+v", peer.ID, err)
-			} else {
+			if err := n.Host.Connect(ctx, peer); err == nil {
 				log.Printf("successfullt connect to peer %s", peer.ID)
 				isConnected = true
 			}

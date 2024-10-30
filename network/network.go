@@ -64,7 +64,9 @@ func (n *network) listeningTopic(ctx context.Context, sub *pubsub.Subscription) 
 			log.Printf("failed to checking subscription: %+v", err)
 		}
 
-		n.HandleReceiveNewBlock(msg.Data)
+		if msg.ReceivedFrom.String() != n.nat.Host.ID().String() {
+			n.HandleReceiveNewBlock(msg.Data)
+		}
 	}
 }
 

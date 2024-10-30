@@ -31,7 +31,3 @@ func NewBlock(data, preBlockHash []byte) *Block {
 
 	return block
 }
-
-func GenesisBlock() *Block {
-	return NewBlock([]byte("Genesis Block"), []byte{})
-}
