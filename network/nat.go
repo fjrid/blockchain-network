@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fjrid/blockchain-network/key"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -35,7 +36,21 @@ func (n *NAT) setupHost() error {
 		return fmt.Errorf("failed to generate multi address: %+v", err)
 	}
 
-	h, err := libp2p.New(libp2p.ListenAddrs(sourceMultiAddr))
+	var (
+		opts = []libp2p.Option{libp2p.ListenAddrs(sourceMultiAddr)}
+	)
+
+	if n.IsServerMode {
+		servKey := key.NewPrivateKey()
+		privKey, err := servKey.GeneratePrivateKey()
+		if err != nil {
+			return fmt.Errorf("failed to generate private key for server mode: %+v", err)
+		}
+
+		opts = append(opts, libp2p.Identity(privKey))
+	}
+
+	h, err := libp2p.New(opts...)
 	if err != nil {
 		return fmt.Errorf("failed to create p2p client: %+v", err)
 	}
