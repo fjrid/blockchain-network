@@ -79,7 +79,7 @@ func (n *NAT) initDHT(ctx context.Context) (*dht.IpfsDHT, error) {
 		log.Println("Node running under server mode")
 		options = append(options, dht.Mode(dht.ModeServer))
 	} else {
-		defaultBootstrap, err := multiaddr.NewMultiaddr("/ip4/128.199.135.207/tcp/37545/p2p/12D3KooWBxeptFzwATdqNkPi3VZqRF5fDSNmcSAsBKuAAJxdNnSB")
+		defaultBootstrap, err := multiaddr.NewMultiaddr("/ip4/128.199.135.207/tcp/37245/p2p/12D3KooWNFHcjSRSoQeMJ7zDXUa6duivpWUr5dqCgjK2EVhqjmcc")
 		if err != nil {
 			return nil, fmt.Errorf("failed to define default bootstrap peer: %+v", err)
 		}
