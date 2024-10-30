@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"time"
 
@@ -21,12 +20,11 @@ import (
 )
 
 type NAT struct {
-	ProtocolID     string
-	Port           int
-	PeersBootstrap string
-	Host           host.Host
+	ProtocolID string
+	Port       int
+	Host       host.Host
 
-	isBootstrapMode bool
+	IsServerMode bool
 }
 
 func (n *NAT) setupHost() error {
@@ -59,14 +57,19 @@ func (n *NAT) initDHT(ctx context.Context) (*dht.IpfsDHT, error) {
 
 	var (
 		options        = make([]dht.Option, 0)
-		bootstrapPeers = n.parsePeerBootstrap()
+		bootstrapPeers = make([]multiaddr.Multiaddr, 0)
 	)
 
-	if len(bootstrapPeers) == 0 {
+	if n.IsServerMode {
 		log.Println("Node running under server mode")
-
-		n.isBootstrapMode = true
 		options = append(options, dht.Mode(dht.ModeServer))
+	} else {
+		defaultBootstrap, err := multiaddr.NewMultiaddr("/ip4/128.199.135.207/tcp/33053/p2p/12D3KooWCYzxFE3TKaqkwPPv4FHmcMyTsH6Cv7Jkei3P8NF7otMX")
+		if err != nil {
+			return nil, fmt.Errorf("failed to define default bootstrap peer: %+v", err)
+		}
+
+		bootstrapPeers = append(bootstrapPeers, defaultBootstrap)
 	}
 
 	kademliaDHT, err := dht.New(ctx, n.Host, options...)
@@ -79,20 +82,20 @@ func (n *NAT) initDHT(ctx context.Context) (*dht.IpfsDHT, error) {
 
 	wg := sync.WaitGroup{}
 	for _, peerAddr := range bootstrapPeers {
-		log.Printf("Connecting to bootstrap peer (%s)", peerAddr.String())
+		log.Printf("Connecting to bootstrap peer")
 
 		addr, err := peer.AddrInfoFromP2pAddr(peerAddr)
 		if err != nil {
-			log.Fatalf("failed to get bootstrap address info from P2P (%s): %+v", peerAddr.String(), err)
+			log.Fatalf("failed to get bootstrap address info from P2P: %+v", err)
 		}
 
 		wg.Add(1)
 		go func(addr *peer.AddrInfo) {
 			defer wg.Done()
 			if err := n.Host.Connect(context.Background(), *addr); err != nil {
-				log.Fatalf("failed to connect to boostrap peer (%s): %+v", addr.String(), err)
+				log.Fatalf("failed to connect to boostrap peer: %+v", err)
 			} else {
-				log.Printf("Successfully connect to bootstrap peer (%s)", addr.String())
+				log.Println("Successfully connect to bootstrap peer")
 			}
 		}(addr)
 	}
@@ -119,7 +122,7 @@ func (n *NAT) discoverNetwork(ctx context.Context) error {
 	dutil.Advertise(ctx, routeDiscover, n.ProtocolID)
 
 	isConnected := false
-	for !isConnected && !n.isBootstrapMode {
+	for !isConnected && !n.IsServerMode {
 		log.Println("Searching for peers...")
 		peerChan, err := routeDiscover.FindPeers(ctx, n.ProtocolID)
 		if err != nil {
@@ -152,32 +155,13 @@ func (n *NAT) discoverNetwork(ctx context.Context) error {
 	return nil
 }
 
-func (n *NAT) parsePeerBootstrap() []multiaddr.Multiaddr {
-	multiAddrs := make([]multiaddr.Multiaddr, 0)
-
-	for _, addr := range strings.Split(n.PeersBootstrap, ",") {
-		if strings.TrimSpace(addr) == "" {
-			continue
-		}
-
-		multiAddr, err := multiaddr.NewMultiaddr(addr)
-		if err != nil {
-			log.Fatalf("failed to parse bootstrap peer address (%s): %+v", addr, err)
-		}
-
-		multiAddrs = append(multiAddrs, multiAddr)
-	}
-
-	return multiAddrs
-}
-
 func initializeNAT(ctx context.Context) (*NAT, error) {
 	nat := &NAT{
 		ProtocolID: "/discovery/1.0.0",
 	}
 
 	flag.IntVar(&nat.Port, "port", 0, "Used to defining port")
-	flag.StringVar(&nat.PeersBootstrap, "bootstrap-peer", "", "Used to define bootstrap peer")
+	flag.BoolVar(&nat.IsServerMode, "server-mode", false, "Used to run in server mode")
 	flag.Parse()
 
 	if err := nat.setupHost(); err != nil {
