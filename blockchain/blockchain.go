@@ -39,6 +39,10 @@ func (bc *Blockchain) GetBlocks() []*block.Block {
 	return bc.blocks
 }
 
+func (bc *Blockchain) SetBlock(blocks []*block.Block) {
+	bc.blocks = blocks
+}
+
 func NewBlockChain() *Blockchain {
 	return &Blockchain{[]*block.Block{}}
 }

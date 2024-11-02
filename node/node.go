@@ -45,6 +45,13 @@ func (n *Node) GetPeers() []*Peer {
 	return n.peers
 }
 
+func (n *Node) SetBlockchain(blocks []*block.Block) {
+	n.mux.Lock()
+	defer n.mux.Unlock()
+
+	n.blockchain.SetBlock(blocks)
+}
+
 func InitNode(port string) *Node {
 	return &Node{
 		host:       fmt.Sprintf("http://localhost%s", port), // Need to implement NAT-PMP and UPnP

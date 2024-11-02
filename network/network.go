@@ -10,13 +10,17 @@ import (
 	"github.com/fjrid/blockchain-network/block"
 	"github.com/fjrid/blockchain-network/node"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	dnet "github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
 type network struct {
 	node *node.Node
 	nat  *NAT
 
-	topic *pubsub.Topic
+	topic   *pubsub.Topic
+	syncPID protocol.ID
 }
 
 func (n *network) HandleAddBlock(w http.ResponseWriter, r *http.Request) {
@@ -93,8 +97,64 @@ func (n *network) initializeGossip() error {
 	return nil
 }
 
-func InitializeNetwork() {
-	nat, err := initializeNAT(context.Background())
+func (n *network) incomingSyncHandler(stream dnet.Stream) {
+	log.Println("Incoming request to sync data")
+	if err := json.NewEncoder(stream).Encode(n.node.GetBlockchains()); err != nil {
+		log.Printf("failed to sent sync blockchain response: %+v", err)
+	}
+
+	defer stream.Close()
+}
+
+func (n *network) syncData(ctx context.Context) {
+	log.Println("Process to sync data")
+
+	isSuccess := false
+	for _, peer := range n.nat.Host.Network().Peers() {
+		if err := n.requestSyncData(ctx, peer); err != nil {
+			log.Printf("failed to request sync data: %+v", err)
+			continue
+		}
+
+		isSuccess = true
+		break
+	}
+
+	if !isSuccess {
+		log.Fatalf("Failed to sync data, cannot connect to network")
+	}
+
+	log.Println("Success to sync data")
+}
+
+func (n *network) requestSyncData(ctx context.Context, peer peer.ID) error {
+	stream, err := n.nat.Host.NewStream(ctx, peer, n.syncPID)
+	if err != nil {
+		return fmt.Errorf("failed to request sync data (%s): %+v", peer.ShortString(), err)
+	}
+
+	defer stream.Close()
+
+	blocks := make([]*block.Block, 0)
+	if err := json.NewDecoder(stream).Decode(&blocks); err != nil {
+		return fmt.Errorf("failed to decoding bocks: %+v", err)
+	}
+
+	n.node.SetBlockchain(blocks)
+
+	return nil
+}
+
+func (n *network) setupSyncStream(ctx context.Context) {
+	n.nat.Host.SetStreamHandler(n.syncPID, n.incomingSyncHandler)
+
+	if !n.nat.IsServerMode {
+		n.syncData(ctx)
+	}
+}
+
+func InitializeNetwork(ctx context.Context) {
+	nat, err := initializeNAT(ctx)
 	if err != nil {
 		log.Fatalf("failed to initialize nat: %+v", err)
 	}
@@ -104,6 +164,8 @@ func InitializeNetwork() {
 		node: node.InitNode(port),
 		nat:  nat,
 	}
+
+	h.setupSyncStream(ctx)
 	h.initializeGossip()
 
 	http.HandleFunc("POST /add-block", h.HandleAddBlock)
