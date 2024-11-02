@@ -5,20 +5,21 @@ import (
 	"errors"
 
 	"github.com/fjrid/blockchain-network/block"
+	"github.com/fjrid/blockchain-network/transaction"
 )
 
 type Blockchain struct {
 	blocks []*block.Block
 }
 
-func (bc *Blockchain) AddBlock(data string) *block.Block {
+func (bc *Blockchain) AddBlock(transaction []*transaction.Transaction, data string) *block.Block {
 	prevHash := make([]byte, 0)
 
 	if len(bc.blocks) > 0 {
 		prevHash = bc.blocks[len(bc.blocks)-1].Hash
 	}
 
-	block := block.NewBlock([]byte(data), prevHash)
+	block := block.NewBlock(transaction, []byte(data), prevHash)
 	bc.blocks = append(bc.blocks, block)
 	return block
 }

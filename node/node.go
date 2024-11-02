@@ -6,6 +6,7 @@ import (
 
 	"github.com/fjrid/blockchain-network/block"
 	"github.com/fjrid/blockchain-network/blockchain"
+	"github.com/fjrid/blockchain-network/transaction"
 )
 
 type Peer struct {
@@ -19,11 +20,11 @@ type Node struct {
 	mux        sync.Mutex
 }
 
-func (n *Node) AddBlock(data string) *block.Block {
+func (n *Node) AddBlock(transaction []*transaction.Transaction, data string) *block.Block {
 	n.mux.Lock()
 	defer n.mux.Unlock()
 
-	block := n.blockchain.AddBlock(data)
+	block := n.blockchain.AddBlock(transaction, data)
 	return block
 }
 

@@ -27,7 +27,7 @@ func (n *network) HandleAddBlock(w http.ResponseWriter, r *http.Request) {
 	body := &AddBlockRequest{}
 	json.NewDecoder(r.Body).Decode(body)
 
-	block := n.node.AddBlock(body.Data)
+	block := n.node.AddBlock(body.Transactions, body.Data)
 	jsonByte, _ := json.Marshal(block)
 
 	err := n.topic.Publish(context.Background(), jsonByte)
@@ -161,8 +161,9 @@ func InitializeNetwork(ctx context.Context) {
 
 	port := fmt.Sprintf(":%d", nat.Port)
 	h := network{
-		node: node.InitNode(port),
-		nat:  nat,
+		node:    node.InitNode(port),
+		nat:     nat,
+		syncPID: protocol.ID("/sync/1.0.0"),
 	}
 
 	h.setupSyncStream(ctx)
