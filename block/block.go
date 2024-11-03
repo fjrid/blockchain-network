@@ -3,8 +3,8 @@ package block
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/fjrid/blockchain-network/transaction"
@@ -31,13 +31,15 @@ func (b *Block) SetMerkleRoot() {
 		return
 	}
 
-	merkleHash, err := transaction.MerkleHashTransactions(b.Transactions)
-	if err != nil {
-		log.Printf("failed to generate merkle hash: %+v", err)
-		return
+	merklePatriciaTrie := transaction.NewMerklePatriciaTrie()
+	for _, tx := range b.Transactions {
+		val, err := json.Marshal(tx)
+		if err == nil {
+			merklePatriciaTrie.Insert(tx.Hash(), val)
+		}
 	}
 
-	b.MerkleRootHash = merkleHash
+	b.MerkleRootHash = []byte(merklePatriciaTrie.Root.Hash())
 }
 
 func NewBlock(transactions []*transaction.Transaction, data, preBlockHash []byte) *Block {
