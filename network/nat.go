@@ -24,6 +24,7 @@ type NAT struct {
 	ProtocolID string
 	Port       int
 	Host       host.Host
+	NATPort    int
 
 	IsServerMode bool
 }
@@ -31,7 +32,9 @@ type NAT struct {
 func (n *NAT) setupHost() error {
 	log.Println("setting up host, and listening network interface")
 
-	sourceMultiAddr, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/tcp/0")
+	sourceMultiAddr, err := multiaddr.NewMultiaddr(
+		fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", n.NATPort),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to generate multi address: %+v", err)
 	}
@@ -175,6 +178,7 @@ func initializeNAT(ctx context.Context) (*NAT, error) {
 
 	flag.IntVar(&nat.Port, "port", 0, "Used to defining port")
 	flag.BoolVar(&nat.IsServerMode, "server-mode", false, "Used to run in server mode")
+	flag.IntVar(&nat.NATPort, "nat-port", 0, "Used to set port on server mode")
 	flag.Parse()
 
 	if err := nat.setupHost(); err != nil {

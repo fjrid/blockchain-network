@@ -3,10 +3,11 @@ package block
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/fjrid/blockchain-network/mpt"
 	"github.com/fjrid/blockchain-network/transaction"
 )
 
@@ -26,20 +27,23 @@ func (b *Block) SetHash() {
 	b.Hash = hash[:]
 }
 
-func (b *Block) SetMerkleRoot() {
+func (b *Block) SetMerkleRoot() error {
 	if len(b.Transactions) == 0 {
-		return
+		return nil
 	}
 
-	merklePatriciaTrie := transaction.NewMerklePatriciaTrie()
-	for _, tx := range b.Transactions {
-		val, err := json.Marshal(tx)
-		if err == nil {
-			merklePatriciaTrie.Insert(tx.Hash(), val)
+	merklePatriciaTrie := mpt.NewMerklePatriciaTrie()
+	for i, tx := range b.Transactions {
+		key, err := rlp.EncodeToBytes(uint(i))
+		if err != nil {
+			return err
 		}
+
+		merklePatriciaTrie.Insert(key, tx.Hash())
 	}
 
-	b.MerkleRootHash = []byte(merklePatriciaTrie.Root.Hash())
+	b.MerkleRootHash = merklePatriciaTrie.Root.Hash()
+	return nil
 }
 
 func NewBlock(transactions []*transaction.Transaction, data, preBlockHash []byte) *Block {
