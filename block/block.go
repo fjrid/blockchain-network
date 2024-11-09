@@ -39,7 +39,12 @@ func (b *Block) SetMerkleRoot() error {
 			return err
 		}
 
-		merklePatriciaTrie.Insert(key, tx.Hash())
+		val, err := tx.RLP()
+		if err != nil {
+			return err
+		}
+
+		merklePatriciaTrie.Insert(key, val)
 	}
 
 	b.MerkleRootHash = merklePatriciaTrie.Root.Hash()

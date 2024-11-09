@@ -1,10 +1,12 @@
 package transaction
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/fjrid/blockchain-network/util"
 )
 
 type Transaction struct {
@@ -27,5 +29,7 @@ func (t *Transaction) Hash() []byte {
 }
 
 func (t *Transaction) RLP() ([]byte, error) {
-	return rlp.EncodeToBytes(t)
+	return rlp.EncodeToBytes(
+		bytes.Join([][]byte{[]byte(t.From), []byte(t.To), util.Float64ToBytes(t.Amount)}, []byte{}),
+	)
 }
