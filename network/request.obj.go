@@ -1,10 +1,7 @@
 package network
 
-import "github.com/fjrid/blockchain-network/transaction"
-
 type AddBlockRequest struct {
-	Data         string                     `json:"data"`
-	Transactions []*transaction.Transaction `json:"transactions"`
+	Data string `json:"data"`
 }
 
 type AddNewPeerRequest struct {

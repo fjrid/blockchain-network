@@ -2,34 +2,40 @@ package transaction
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"fmt"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/fjrid/blockchain-network/util"
 )
 
 type Transaction struct {
-	From   string  `json:"from"`
-	To     string  `json:"to"`
-	Amount float64 `json:"amount"`
+	From     string `json:"from"`
+	To       string `json:"to"`
+	Amount   uint64 `json:"amount"`
+	GasPrice uint64 `json:"gas_price"`
 }
 
-func NewTransaction(from, to string, amount float64) *Transaction {
+func NewTransaction(from, to string, amount, gasPrice uint64) *Transaction {
 	return &Transaction{
-		From:   from,
-		To:     to,
-		Amount: amount,
+		From:     from,
+		To:       to,
+		Amount:   amount,
+		GasPrice: gasPrice,
 	}
 }
 
 func (t *Transaction) Hash() []byte {
-	hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%f", t.From, t.To, t.Amount)))
-	return hash[:]
+	rlp, _ := t.RLP()
+	return crypto.Keccak256(rlp)
 }
 
 func (t *Transaction) RLP() ([]byte, error) {
 	return rlp.EncodeToBytes(
-		bytes.Join([][]byte{[]byte(t.From), []byte(t.To), util.Float64ToBytes(t.Amount)}, []byte{}),
+		bytes.Join([][]byte{
+			[]byte(t.From),
+			[]byte(t.To),
+			util.Uint64ToBytes(t.Amount),
+			util.Uint64ToBytes(t.GasPrice),
+		}, []byte{}),
 	)
 }

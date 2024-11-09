@@ -6,6 +6,7 @@ import (
 
 	"github.com/fjrid/blockchain-network/block"
 	"github.com/fjrid/blockchain-network/blockchain"
+	"github.com/fjrid/blockchain-network/mempool"
 	"github.com/fjrid/blockchain-network/transaction"
 )
 
@@ -14,17 +15,22 @@ type Peer struct {
 }
 
 type Node struct {
-	host       string
-	blockchain *blockchain.Blockchain
-	peers      []*Peer
-	mux        sync.Mutex
+	host            string
+	blockchain      *blockchain.Blockchain
+	peers           []*Peer
+	transactionPool *mempool.Mempool
+	mux             sync.Mutex
+
+	maximumTransaction int
 }
 
-func (n *Node) AddBlock(transaction []*transaction.Transaction, data string) *block.Block {
+func (n *Node) AddBlock(data string) *block.Block {
 	n.mux.Lock()
 	defer n.mux.Unlock()
 
-	block := n.blockchain.AddBlock(transaction, data)
+	transactions := n.transactionPool.TakeTransaction(n.maximumTransaction)
+
+	block := n.blockchain.AddBlock(transactions, data)
 	return block
 }
 
@@ -53,10 +59,22 @@ func (n *Node) SetBlockchain(blocks []*block.Block) {
 	n.blockchain.SetBlock(blocks)
 }
 
+func (n *Node) AddTransaction(tx *transaction.Transaction) []byte {
+	n.transactionPool.AddTransaction(tx)
+
+	return tx.Hash()
+}
+
+func (n *Node) GetPendingTransactions() []*transaction.Transaction {
+	return n.transactionPool.GetTransactions()
+}
+
 func InitNode(port string) *Node {
 	return &Node{
-		host:       fmt.Sprintf("http://localhost%s", port), // Need to implement NAT-PMP and UPnP
-		blockchain: blockchain.NewBlockChain(),
-		peers:      make([]*Peer, 0),
+		host:               fmt.Sprintf("http://localhost%s", port), // Need to implement NAT-PMP and UPnP
+		blockchain:         blockchain.NewBlockChain(),
+		transactionPool:    mempool.NewMempool(),
+		peers:              make([]*Peer, 0),
+		maximumTransaction: 2,
 	}
 }
