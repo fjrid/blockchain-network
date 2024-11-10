@@ -3,23 +3,28 @@ package mpt
 import (
 	"bytes"
 	"log"
+
+	"github.com/fjrid/blockchain-network/db"
 )
 
 type (
 	MerklePatriciaTrie struct {
 		Root Node
+		db   *db.DB
 	}
 )
 
-func NewMerklePatriciaTrie() *MerklePatriciaTrie {
-	return &MerklePatriciaTrie{}
+func NewMerklePatriciaTrie(db *db.DB) *MerklePatriciaTrie {
+	return &MerklePatriciaTrie{
+		db: db,
+	}
 }
 
 func (t *MerklePatriciaTrie) Insert(key, value []byte) {
-	t.Root = insertNode(t.Root, getNibbleKey(key), value)
+	t.Root = t.insertNode(t.Root, getNibbleKey(key), value)
 }
 
-func insertNode(node Node, key, value []byte) Node {
+func (t *MerklePatriciaTrie) insertNode(node Node, key, value []byte) Node {
 	if node == nil {
 		return &LeafNode{Key: key, Value: value}
 	}
@@ -42,12 +47,12 @@ func insertNode(node Node, key, value []byte) Node {
 		return branch
 	case *BranchNode:
 		index := key[0]
-		n.Children[index] = insertNode(n.Children[index], key[1:], value)
+		n.Children[index] = t.insertNode(n.Children[index], key[1:], value)
 		return n
 	case *ExtensionNode:
 		commonPrefix, remainingKey1, remainingKey2 := getLongestCommonPrefix(n.Path, key)
 		if bytes.Equal(n.Path, commonPrefix) {
-			n.Child = insertNode(n.Child, remainingKey2, value)
+			n.Child = t.insertNode(n.Child, remainingKey2, value)
 			return n
 		}
 
@@ -61,4 +66,36 @@ func insertNode(node Node, key, value []byte) Node {
 	}
 
 	return nil
+}
+
+func (t *MerklePatriciaTrie) Store() {
+	if t.Root != nil {
+		t.storeNode(t.Root)
+	}
+}
+
+func (t *MerklePatriciaTrie) storeNode(node Node) {
+	switch n := node.(type) {
+	case *LeafNode:
+		serializedData, err := serialize(node)
+		if err == nil {
+			t.db.Put(n.Hash(), serializedData)
+		}
+	case *ExtensionNode:
+		serializedData, err := serialize(node)
+		if err == nil {
+			t.db.Put(n.Hash(), serializedData)
+		}
+
+		t.storeNode(n.Child)
+	case *BranchNode:
+		serializedData, err := serialize(node)
+		if err == nil {
+			t.db.Put(n.Hash(), serializedData)
+		}
+
+		for _, child := range n.Children {
+			t.storeNode(child)
+		}
+	}
 }

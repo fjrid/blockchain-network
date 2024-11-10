@@ -15,6 +15,7 @@ func (h *network) setRoute() {
 	http.HandleFunc("POST /transaction", h.HandleAddTransaction)
 	http.HandleFunc("GET /blocks", h.HandleGetBlocks)
 	http.HandleFunc("GET /transactions/pending", h.HandleGetPendingTransactions)
+	http.HandleFunc("POST /mpt/node/check", h.HandleCheckMPTNode)
 	http.HandleFunc("GET /peers", h.HandleGetPeers)
 }
 
@@ -54,4 +55,23 @@ func (n *network) HandleGetBlocks(w http.ResponseWriter, r *http.Request) {
 
 func (n *network) HandleGetPeers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(n.node.GetPeers())
+}
+
+func (n *network) HandleCheckMPTNode(w http.ResponseWriter, r *http.Request) {
+	body := &struct {
+		Hash string `json:"hash"`
+	}{}
+	json.NewDecoder(r.Body).Decode(body)
+
+	hashKey, err := hex.DecodeString(body.Hash)
+	if err != nil {
+		fmt.Fprintf(w, "failed to decode hash: %+v", err)
+	}
+
+	result, err := n.node.CheckMPTNode(hashKey)
+	if err != nil {
+		fmt.Fprintf(w, "failed to check MPT Node: %+v", err)
+	}
+
+	fmt.Fprintf(w, "success to check MPT Node: %v", result)
 }

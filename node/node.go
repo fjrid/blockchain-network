@@ -6,6 +6,7 @@ import (
 
 	"github.com/fjrid/blockchain-network/block"
 	"github.com/fjrid/blockchain-network/blockchain"
+	"github.com/fjrid/blockchain-network/db"
 	"github.com/fjrid/blockchain-network/mempool"
 	"github.com/fjrid/blockchain-network/transaction"
 )
@@ -20,6 +21,7 @@ type Node struct {
 	peers           []*Peer
 	transactionPool *mempool.Mempool
 	mux             sync.Mutex
+	db              *db.DB
 
 	maximumTransaction int
 }
@@ -30,7 +32,7 @@ func (n *Node) AddBlock(data string) *block.Block {
 
 	transactions := n.transactionPool.TakeTransaction(n.maximumTransaction)
 
-	block := n.blockchain.AddBlock(transactions, data)
+	block := n.blockchain.AddBlock(n.db, transactions, data)
 	return block
 }
 
@@ -69,12 +71,17 @@ func (n *Node) GetPendingTransactions() []*transaction.Transaction {
 	return n.transactionPool.GetTransactions()
 }
 
+func (n *Node) CheckMPTNode(key []byte) ([]byte, error) {
+	return n.db.Get(key)
+}
+
 func InitNode(port string) *Node {
 	return &Node{
 		host:               fmt.Sprintf("http://localhost%s", port), // Need to implement NAT-PMP and UPnP
 		blockchain:         blockchain.NewBlockChain(),
 		transactionPool:    mempool.NewMempool(),
 		peers:              make([]*Peer, 0),
+		db:                 db.NewDB(),
 		maximumTransaction: 2,
 	}
 }
